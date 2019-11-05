@@ -38,7 +38,7 @@ class risetimes(object):
         for r in range(len(self.traces)):
             diff2[r] = np.diff(self.traces[r][0],n=2,axis=0)
             allpeaks[r] = fp(self.traces[r][0])
-            large[r] = np.where(np.abs(diff2[r]) > np.max(np.abs(diff2[r]))/10)[0]
+            large[r] = np.where(np.abs(diff2[r]) > np.max(np.abs(diff2[r]))/4)[0]
             gaps[r] = np.logical_and((np.diff(large[r]) > self.window),(np.diff(large[r]) < self.window*200))
             begins[r] = np.insert(large[r][1:][gaps[r]], 0, large[r][0])
             ends[r] = np.append(large[r][:-1][gaps[r]],large[r][-1])
@@ -55,7 +55,7 @@ class risetimes(object):
             tallpeak[r] = np.hstack(tallpeak[r])
             difftallpeak[r] = np.diff(self.traces[r][0][tallpeak[r]])
             maxpeak[r] = np.where(difftallpeak[r]==np.max(difftallpeak[r]))[0]
-            allincpeaks[r] = np.where(difftallpeak[r]>=maxpeak[r]/5)[0].tolist()
+            allincpeaks[r] = np.where(difftallpeak[r]>=maxpeak[r]/2)[0].tolist()
             allincpeaks[r].extend(allincpeaks[r][i]+1 for i in range(len(allincpeaks[r])))
             includepeaks[r] = tallpeak[r][allincpeaks[r]].astype(int)
 
@@ -93,21 +93,21 @@ class risetimes(object):
             rem_tr = len(self.rn) - p
             print(rem_tr)
             ax[0].plot(self.traces[p],linewidth=0.3,marker='.',markersize=1)
-            ax[0].text(0.95, 0.95, self.rn[p], transform=ax[p].transAxes, fontsize=8, verticalalignment='top',horizontalalignment='right')
-            ax[0].text(0.8, 0.8, self.numZ*self.exptime, transform=ax[p].transAxes, fontsize=8, verticalalignment='top',horizontalalignment='right')
-            ax[0].set_xlim([0,4000])
+            ax[0].text(0.95, 0.95, self.rn[p], fontsize=8, verticalalignment='top',horizontalalignment='right')#transform=ax[p].transAxes,
+            ax[0].text(0.8, 0.8, self.numZ*self.exptime, fontsize=8, verticalalignment='top',horizontalalignment='right')#transform=ax[p].transAxes,
+            # ax[0].set_xlim([0,4000])
             for key in self.pidx:
                 if key[0] == p:
                     ax[0].text(np.max(self.perc10[key]),0.95,np.round(self.risetime[key][0],decimals=2), fontsize=8)
                     ax[0].plot(self.perc10[key][0],self.traces[key[0]][0][self.perc10[key][0]],'>')
                     ax[0].plot(self.perc90[key][0],self.traces[key[0]][0][self.perc90[key][0]],'<')               
+            xlim=ax[0].get_xlim()
+            ax[0].set_xticks(range(np.int(xlim[0]),np.int(xlim[1]),np.int(50/(self.exptime*self.numZ))))
+            xtl=range(np.int(xlim[0]*self.exptime*self.numZ),np.int(xlim[1]*self.exptime*self.numZ),50)
+            ax[0].set_xticklabels(xtl)#, fontsize=8
+            ax[0].axes.tick_params(axis='y')#, labelsize=8
+            ax[0].set_xlabel("time (s)")#, fontsize=8
             ax[0].set_ylabel("dF/F",fontsize=8)
-            xtick=range(0,4000,np.int(20/(self.exptime*self.numZ)))
-            xtl=range(0,np.int(np.float(4000)*self.exptime*self.numZ),20)
-            ax[0].set_xticks(xtick)
-            ax[0].set_xticklabels(xtl, fontsize=8)
-            ax[0].axes.tick_params(axis='y', labelsize=8)
-            ax[0].set_xlabel("time (s)", fontsize=8)
             z[p]=self.rn[p].split('r')[0]
             z[p]=np.int(z[p].split('z')[1])
             n[p]=np.int(self.rn[p].split('r')[1])
@@ -117,4 +117,4 @@ class risetimes(object):
             fig.savefig(self.path+"RisetimesAndRange_allauto/"+self.wormid+self.rn[p]+"RisetimeAndImgfig.pdf",dpi=1200,format='pdf')
             plt.clf()
             plt.close()
-        return rem_tr, xtick, xtl
+        return rem_tr, xtl
