@@ -5,17 +5,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import shutil
 from scipy.signal import find_peaks as fp
+import tifffile as tf
+import timeseries_risetime as ts
 
 class risetimes(object):
-    def __init__(self,path,numZ,exptime,window):
+    def __init__(self,path,tifpath,roipath,bckpath,numZ,exptime,window,wormid):
         tr = pn.mkplots(path,numZ,exptime)
+        zroi = ts.Timeseries(tifpath, roipath, bckpath, numZ, exptime)
+        self.zt0=tf.imread(tifpath,key=range(numZ))
+        self.zr=zroi.ZorganizedROIs()
         self.traces = tr.gettraces()[0]
         self.rn = tr.gettraces()[1]
         self.window = window
         self.numZ = numZ
         self.exptime = exptime
         self.path = path
-    
+        self.wormid=wormid
+
     def calcrisetimes(self):
         """
         Within a range of x values above a 2nd deriv threshold, find peaks and interpolate between 2 peaks that are above a magnitude threshold
@@ -27,8 +33,8 @@ class risetimes(object):
             shutil.rmtree(self.path+"RisetimesAndRange_allauto")
         os.mkdir(self.path+"RisetimesAndRange_allauto")
         
-        allpeaks,diff2,max,large,gaps,begins,ends,peakfp,tallpeak,difftallpeak,maxpeak,allincpeaks,includepeaks,interp,xval,x,y,peak,baseline,svpeak,svbegins,perc10,perc90,risetime=({} for i in range(24))
-        pidx=[]
+        allpeaks,diff2,max,large,gaps,begins,ends,peakfp,tallpeak,difftallpeak,maxpeak,allincpeaks,includepeaks,interp,xval,x,y,peak,baseline,self.perc10,self.perc90,self.risetime=({} for i in range(22))
+        self.pidx=[]
         for r in range(len(self.traces)):
             diff2[r] = np.diff(self.traces[r][0],n=2,axis=0)
             allpeaks[r] = fp(self.traces[r][0])
@@ -54,60 +60,48 @@ class risetimes(object):
             includepeaks[r] = tallpeak[r][allincpeaks[r]].astype(int)
 
             for i in range(len(includepeaks[r])):
-                plt.scatter(includepeaks[r][i],self.traces[0][0][includepeaks[r][i]])
-            plt.plot(self.traces[0][0])
+                plt.scatter(includepeaks[r][i],self.traces[r][0][includepeaks[r][i]])
+            plt.plot(self.traces[r][0])
+            plt.savefig(self.path+"RisetimesAndRange_allauto/"+self.wormid+self.rn[r]+"risetimefig.pdf",dpi=1200,format='pdf')
             plt.show()
+            plt.clf()
 
             for i in range(0,len(includepeaks[r])-1,2):
                 xval[(r,i)] = np.linspace(includepeaks[r][i],includepeaks[r][i+1],5000)
                 y[(r,i)] = self.traces[r][0][includepeaks[r][i]:includepeaks[r][i+1]]
                 x[(r,i)] = range(includepeaks[r][i],includepeaks[r][i+1])
-            interp[(r,i)] = np.interp(xval[(r,i)],x[(r,i)],y[(r,i)])
-            peak[(r,i)] = includepeaks[r][i]+np.int(np.min(np.where(interp[(r,i)]==np.max(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
-            baseline[(r,i)] = includepeaks[r][i]+np.int(np.max(np.where(interp[(r,i)]==np.min(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
-            perc10[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),10))]
-            perc90[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),90))]
-            risetime[(r,i)] = [(perc90[(r,i)][0]-perc10[(r,i)][0])*(self.numZ*self.exptime)]
-            pidx.append((r,i))
+                interp[(r,i)] = np.interp(xval[(r,i)],x[(r,i)],y[(r,i)])
+                peak[(r,i)] = includepeaks[r][i]+np.int(np.min(np.where(interp[(r,i)]==np.max(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
+                baseline[(r,i)] = includepeaks[r][i]+np.int(np.max(np.where(interp[(r,i)]==np.min(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
+                self.perc10[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),10))]
+                self.perc90[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),90))]
+                self.risetime[(r,i)] = [(self.perc90[(r,i)][0]-self.perc10[(r,i)][0])*(self.numZ*self.exptime)]
+                self.pidx.append((r,i))
 
-        return begins, ends, large, gaps, max, diff2, allpeaks, peakfp, tallpeak, difftallpeak, maxpeak, allincpeaks, includepeaks, xval, x, y, interp, peak,baseline,perc10, perc90, risetime
+            calcrtimesv=pd.DataFrame.from_dict([self.wormid,self.rn[r],self.traces[r][0],self.perc10,self.perc90,self.risetime])
+            calcrtimesv.to_pickle(self.path+"RisetimesAndRange_allauto/"+self.wormid+self.rn[r]+"TraceAndRtimeStuff.pkl")
+
+        return begins, ends, large, gaps, max, diff2, allpeaks, peakfp, tallpeak, difftallpeak, maxpeak, allincpeaks, includepeaks, xval, x, y, interp, peak,baseline,self.perc10, self.perc90, self.risetime
 
     def plotrisetimesontrace(self):
         """
         on every rise, note the risetime (90%-10% of baseline value)
         """
-        z,n,val,addrtime,rtimebegins,rtimeends=({} for i in range(6))
-        #print(lastntracesperplot)
-        #xlast=np.float(len(self.ntrace[0]))*self.exptime*self.numZ    
+        z,n=({} for i in range(2))  
         for p in range(len(self.rn)):
-            fig,ax = plt.subplots(iter,1,sharex=True,num=p,squeeze=True,figsize=(8,6))
+            fig,ax = plt.subplots(2,1,num=p,squeeze=True,figsize=(8,6))
             rem_tr = len(self.rn) - p
             print(rem_tr)
             ax[0].plot(self.traces[p],linewidth=0.3,marker='.',markersize=1)
             ax[0].text(0.95, 0.95, self.rn[p], transform=ax[p].transAxes, fontsize=8, verticalalignment='top',horizontalalignment='right')
             ax[0].text(0.8, 0.8, self.numZ*self.exptime, transform=ax[p].transAxes, fontsize=8, verticalalignment='top',horizontalalignment='right')
             ax[0].set_xlim([0,4000])
-            # for key in self.pidx:
-            #     if key[0] == p:
-            #         ax[0].text(np.max(self.peak[key]),0.95,np.round(self.risetime[key][0],decimals=2), fontsize=8)
-            #         ax[0].plot(self.perc10[key][0],self.traces[key[0]][0][self.perc10[key][0]],'>')
-            #         ax[0].plot(self.perc90[key][0],self.traces[key[0]][0][self.perc90[key][0]],'<')               
+            for key in self.pidx:
+                if key[0] == p:
+                    ax[0].text(np.max(self.perc10[key]),0.95,np.round(self.risetime[key][0],decimals=2), fontsize=8)
+                    ax[0].plot(self.perc10[key][0],self.traces[key[0]][0][self.perc10[key][0]],'>')
+                    ax[0].plot(self.perc90[key][0],self.traces[key[0]][0][self.perc90[key][0]],'<')               
             ax[0].set_ylabel("dF/F",fontsize=8)
-            cursor = Cursor(ax[p], useblit=True, color='k', linewidth=1)
-            zoom_ok = False
-            print('\nZoom or pan to view, \npress spacebar when ready to click:\n')
-            while not zoom_ok:
-                zoom_ok=plt.waitforbuttonpress(timeout=5)
-            print('Click once to select timepoint:')
-            val=plt.ginput(n=-1,timeout=0,show_clicks=True,mouse_add=1,mouse_pop=2,mouse_stop=3)
-            addrtime,rtimebegins,rtimeends=([] for i in range (3))
-            for num in range(0,len(val),2):
-                ax[0].plot(val[num][0],val[num][1],'>')
-                ax[0].plot(val[num+1][0],val[num+1][1],'<')
-                ax[0].text(val[num][0],0.95,np.round(((val[num+1][0]-val[num][0])*(self.numZ*self.exptime)),decimals=2),fontsize=8)
-                rtimebegins.append(val[num][0])
-                rtimeends.append(val[num+1][0])
-                addrtime.append(np.round(((val[num+1][0]-val[num][0])*(self.numZ*self.exptime)),decimals=2))
             xtick=range(0,4000,np.int(20/(self.exptime*self.numZ)))
             xtl=range(0,np.int(np.float(4000)*self.exptime*self.numZ),20)
             ax[0].set_xticks(xtick)
@@ -115,14 +109,12 @@ class risetimes(object):
             ax[0].axes.tick_params(axis='y', labelsize=8)
             ax[0].set_xlabel("time (s)", fontsize=8)
             z[p]=self.rn[p].split('r')[0]
-            z[p]=self.rn[p].split('z')[1]
-            n[p]=self.rn[p].split('r')[1]
-            ax[1].imshow(self.zt0[p])
-            for pix in range(len(self.zr[p][n])):
-                ax[1].scatter(self.zr[p][n][pix][0],self.zr[p][n][pix][1],marker='.',markersize=1)            
-            ntr = "risetimezoom"+str(p)
-            fig.savefig(self.path+"RisetimesAndRange/"+ntr+".pdf",dpi=1200,format='pdf')
+            z[p]=np.int(z[p].split('z')[1])
+            n[p]=np.int(self.rn[p].split('r')[1])
+            ax[1].imshow(self.zt0[z[p]])
+            for pix in range(len(self.zr[0][z[p]][n[p]])):
+                ax[1].scatter(self.zr[0][z[p]][n[p]][pix][0],self.zr[0][z[p]][n[p]][pix][1],marker='.')     
+            fig.savefig(self.path+"RisetimesAndRange_allauto/"+self.wormid+self.rn[p]+"RisetimeAndImgfig.pdf",dpi=1200,format='pdf')
             plt.clf()
-            addrtimesv=pd.DataFrame.from_dict([rtimebegins,rtimeends,addrtime])
-            addrtimesv.to_pickle(self.path+"RisetimesAndRange/addRisetimeAndRange.pkl")
+            plt.close()
         return rem_tr, xtick, xtl
