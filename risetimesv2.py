@@ -71,7 +71,7 @@ class risetimes(object):
                 y[(r,i)] = self.traces[r][0][includepeaks[r][i]:includepeaks[r][i+1]]
                 x[(r,i)] = range(includepeaks[r][i],includepeaks[r][i+1])
                 interp[(r,i)] = np.interp(xval[(r,i)],x[(r,i)],y[(r,i)])
-                peak[(r,i)] = includepeaks[r][i]+np.int(np.min(np.where(interp[(r,i)]==np.max(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
+                peak[(r,i)] = includepeaks[r][i+1]+np.int(np.min(np.where(interp[(r,i)]==np.max(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
                 baseline[(r,i)] = includepeaks[r][i]+np.int(np.max(np.where(interp[(r,i)]==np.min(interp[(r,i)]))[0])*((includepeaks[r][i+1]-includepeaks[r][i])/5000))
                 self.perc10[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),10))]
                 self.perc90[(r,i)] = [np.int(np.percentile(range(baseline[(r,i)],peak[(r,i)]),90))]
